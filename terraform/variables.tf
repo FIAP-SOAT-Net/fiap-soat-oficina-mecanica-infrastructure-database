@@ -2,7 +2,7 @@
 variable "aws_region" {
   description = "AWS region where resources will be created"
   type        = string
-  default     = "us-east-1"
+  default     = "us-west-2"
 }
 
 # Environment
@@ -66,7 +66,7 @@ variable "db_storage_type" {
 variable "db_engine_version" {
   description = "MySQL engine version"
   type        = string
-  default     = "8.4.0"
+  default     = "8.4.3"
 }
 
 # Network configuration
@@ -98,7 +98,7 @@ variable "allowed_security_group_ids" {
 variable "backup_retention_period" {
   description = "Number of days to retain backups"
   type        = number
-  default     = 1 # Minimum recommended
+  default     = 1 # Free tier limit
 }
 
 variable "backup_window" {

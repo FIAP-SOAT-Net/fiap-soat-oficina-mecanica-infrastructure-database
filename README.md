@@ -169,17 +169,105 @@ migrations/sql/
 
 ## ☁️ AWS Deployment
 
-### Step 1: Configure AWS Credentials
+### Step 1: Setup Remote State Backend (One-time)
 
-#### Option A: Using AWS CLI
+Before deploying the database infrastructure, you need to create the S3 bucket and DynamoDB table for storing Terraform state:
+
+```bash
+cd terraform/backend-setup
+terraform init
+terraform apply
+```
+
+This creates:
+- **S3 Bucket**: `smart-workshop-terraform-state` (stores state files)
+- **DynamoDB Table**: `smart-workshop-terraform-locks` (prevents concurrent modifications)
+
+**Cost**: ~$0.10/month (essentially free)
+
+### Step 2: Configure AWS Credentials
+
+#### Option A: Using AWS CLI (Local Development)
 ```bash
 aws configure
 ```
 
 #### Option B: Using OIDC (Recommended for CI/CD)
-Follow the [AWS OIDC Guide](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
 
-### Step 2: Prepare Terraform Variables
+1. **Create OIDC Provider** in AWS IAM:
+   - Go to IAM Console → Identity Providers → Add Provider
+   - Provider Type: OpenID Connect
+   - Provider URL: `https://token.actions.githubusercontent.com`
+   - Audience: `sts.amazonaws.com`
+
+2. **Create IAM Role** with this trust policy:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_ORG/YOUR_REPO:*"
+        }
+      }
+    }
+  ]
+}
+```
+
+3. **Attach these policies** to the role:
+   - `AmazonRDSFullAccess`
+   - `AmazonVPCFullAccess`
+   - `IAMFullAccess`
+   - Custom policy for S3 backend:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::smart-workshop-terraform-state/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::smart-workshop-terraform-state"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:DeleteItem"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/smart-workshop-terraform-locks"
+    }
+  ]
+}
+```
+
+4. **Add GitHub Secrets**:
+   - `AWS_ROLE_ARN`: arn:aws:iam::YOUR_ACCOUNT_ID:role/YourRoleName
+   - `DB_PASSWORD`: Your secure database password
+
+### Step 3: Prepare Terraform Variables
 
 ```bash
 cd terraform
@@ -199,55 +287,95 @@ subnet_ids = [
   "subnet-xxxxxxxxxxxxxxxxx",  # Subnet in AZ 2
 ]
 
-# Get your public IP: https://whatismyipaddress.com/
+# ⚠️ WARNING: Allowing all IPs (dev only!)
+# For production, restrict to specific IPs
 allowed_cidr_blocks = [
-  "YOUR_IP_ADDRESS/32",
+  "0.0.0.0/0",  # Allow all (development only)
 ]
 
 # Optional: EKS security group
 allowed_security_group_ids = [
   "sg-xxxxxxxxxxxxxxxxx",  # EKS security group
 ]
+
+# Database password (also set as GitHub Secret: DB_PASSWORD)
+db_password = "YourSecurePassword123!"
 ```
 
-### Step 3: Deploy Infrastructure
+### Step 4: Deploy Infrastructure
+
+### Step 4: Deploy Infrastructure
 
 ```bash
-# Initialize Terraform
+cd terraform  # If you were in backend-setup, go back to terraform/
+
+# Initialize Terraform (this migrates state to S3)
 terraform init
 
 # Validate configuration
 terraform validate
 
 # Preview changes
-terraform plan
+terraform plan -var="db_password=YourSecurePassword123!"
 
 # Apply changes
-terraform apply
+terraform apply -var="db_password=YourSecurePassword123!"
 
 # Get RDS endpoint
 terraform output rds_endpoint
 ```
 
-### Step 4: Get Database Password
-
-The password is automatically generated and stored in AWS Secrets Manager:
-
-```bash
-# Get the secret ARN
-SECRET_ARN=$(terraform output -raw db_password_secret_arn)
-
-# Retrieve password
-aws secretsmanager get-secret-value \
-  --secret-id $SECRET_ARN \
-  --query SecretString \
-  --output text | jq -r .password
-```
+**Note**: State is now stored in S3. Each `terraform` command will automatically sync with the remote state.
 
 ### Step 5: Connect to RDS
 
 ```bash
 # Get connection command from Terraform
+terraform output mysql_cli_command
+
+# Example output:
+# mysql -h smart-workshop-dev-db.xxxxx.us-west-2.rds.amazonaws.com -P 3306 -u admin -p smart_workshop
+```
+
+### Step 6: Run Database Migrations
+
+#### Option A: Using GitHub Actions (Recommended)
+Push your code to GitHub. The pipeline will automatically:
+1. Deploy RDS infrastructure
+2. Wait for RDS to be available
+3. Run Flyway migrations
+
+#### Option B: Manual Migrations
+```bash
+cd ..  # Back to project root
+make rds-migrate
+```
+
+Or using Docker directly:
+```bash
+RDS_ENDPOINT=$(cd terraform && terraform output -raw rds_address)
+
+docker run --rm \
+  -v ./migrations/sql:/flyway/sql \
+  flyway/flyway:10-alpine \
+  -url=jdbc:mysql://$RDS_ENDPOINT:3306/smart_workshop \
+  -user=admin \
+  -password=YourSecurePassword123! \
+  -connectRetries=10 \
+  -baselineOnMigrate=true \
+  migrate
+```
+
+### Destroying Infrastructure
+
+```bash
+cd terraform
+terraform destroy -var="db_password=YourSecurePassword123!"
+```
+
+⚠️ **Warning**: This will delete the RDS instance and all data! Make sure you have backups.
+
+## 🗄️ Database Migrations
 terraform output mysql_cli_command
 
 # Example:

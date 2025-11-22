@@ -27,9 +27,10 @@ subnet_ids = [
 ]
 
 # Security Configuration
-# Add your public IP here: https://whatismyipaddress.com/
+# ⚠️ WARNING: Allowing all IPs (0.0.0.0/0) is NOT recommended for production!
+# This is only suitable for development/testing environments.
 allowed_cidr_blocks = [
-  "YOUR_IP_ADDRESS/32",  # Replace with your IP
+  "0.0.0.0/0",  # Allow all IPs (dev only)
 ]
 
 # Add EKS security group ID here (when available)

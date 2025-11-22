@@ -25,9 +25,14 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy RDS Infrastructure
+    name: 🚀 Deploy RDS Infrastructure
     runs-on: ubuntu-latest
     environment: dev
+    
+    outputs:
+      rds_endpoint: ${{ steps.rds_output.outputs.endpoint }}
+      rds_address: ${{ steps.rds_output.outputs.address }}
+      rds_instance_id: ${{ steps.rds_output.outputs.instance_id }}
     
     defaults:
       run:
@@ -79,7 +84,11 @@ jobs:
         id: rds_output
         run: |
           ENDPOINT=$(terraform output -raw rds_endpoint)
+          ADDRESS=$(terraform output -raw rds_address)
+          INSTANCE_ID=$(terraform output -raw rds_instance_id)
           echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
+          echo "address=$ADDRESS" >> $GITHUB_OUTPUT
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
 
       - name: Save RDS Endpoint
         if: github.event.inputs.action != 'destroy'
@@ -94,10 +103,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     
-    defaults:
-      run:
-        working-directory: terraform
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -108,28 +113,20 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.0
-          terraform_wrapper: false
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Get RDS Endpoint
+      - name: Get RDS Endpoint from Deploy Job
         id: rds
         run: |
-          ENDPOINT=$(terraform output -raw rds_address)
-          echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
-          echo "📍 RDS Endpoint: $ENDPOINT"
+          echo "Using RDS endpoint from deploy job"
+          echo "endpoint=${{ needs.deploy.outputs.rds_address }}" >> $GITHUB_OUTPUT
 
       - name: Wait for RDS to be available
         run: |
           echo "⏳ Waiting for RDS instance to be fully available..."
+          INSTANCE_ID="${{ needs.deploy.outputs.rds_instance_id }}"
+          
           for i in {1..30}; do
             STATUS=$(aws rds describe-db-instances \
-              --db-instance-identifier $(terraform output -raw rds_instance_id) \
+              --db-instance-identifier "$INSTANCE_ID" \
               --query 'DBInstances[0].DBInstanceStatus' \
               --output text)
             

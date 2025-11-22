@@ -1,12 +1,8 @@
 # Security Group for RDS
 resource "aws_security_group" "rds" {
-  name_prefix = "${var.project_name}-${var.environment}-rds-"
+  name        = "${var.project_name}-${var.environment}-rds-sg"
   description = "Security group for ${var.project_name} RDS instance"
   vpc_id      = var.vpc_id
-
-  lifecycle {
-    create_before_destroy = true
-  }
 
   tags = merge(
     {
@@ -55,7 +51,7 @@ resource "aws_security_group_rule" "rds_egress" {
 
 # DB Subnet Group
 resource "aws_db_subnet_group" "main" {
-  name_prefix = "${var.project_name}-${var.environment}-"
+  name        = "${var.project_name}-${var.environment}-db-subnet-group"
   subnet_ids  = var.subnet_ids
   description = "Subnet group for ${var.project_name} RDS instance"
 
@@ -69,7 +65,7 @@ resource "aws_db_subnet_group" "main" {
 
 # DB Parameter Group
 resource "aws_db_parameter_group" "main" {
-  name_prefix = "${var.project_name}-${var.environment}-mysql84-"
+  name        = "${var.project_name}-${var.environment}-mysql84-params"
   family      = "mysql8.4"
   description = "Custom parameter group for MySQL 8.4"
 
@@ -110,10 +106,6 @@ resource "aws_db_parameter_group" "main" {
     value = "1"
   }
 
-  lifecycle {
-    create_before_destroy = true
-  }
-
   tags = merge(
     {
       Name = "${var.project_name}-${var.environment}-mysql84-params"
@@ -124,7 +116,7 @@ resource "aws_db_parameter_group" "main" {
 
 # RDS Instance
 resource "aws_db_instance" "main" {
-  identifier_prefix = "${var.project_name}-${var.environment}-"
+  identifier = "${var.project_name}-${var.environment}-db"
 
   # Engine configuration
   engine               = "mysql"
@@ -192,7 +184,7 @@ resource "aws_db_instance" "main" {
 
 # IAM Role for Enhanced Monitoring
 resource "aws_iam_role" "rds_monitoring" {
-  name_prefix = "${var.project_name}-${var.environment}-rds-monitoring-"
+  name = "${var.project_name}-${var.environment}-rds-monitoring-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

@@ -41,7 +41,7 @@ output "security_group_id" {
 # Resource identifiers
 output "rds_instance_id" {
   description = "RDS instance identifier"
-  value       = aws_db_instance.main.id
+  value       = aws_db_instance.main.identifier
 }
 
 output "rds_resource_id" {

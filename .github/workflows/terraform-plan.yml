@@ -1,4 +1,4 @@
-name: Terraform Plan
+name: 📋 Terraform Plan
 
 on:
   pull_request:
@@ -49,6 +49,7 @@ jobs:
             -var="vpc_id=${{ secrets.VPC_ID }}" \
             -var='subnet_ids=${{ secrets.SUBNET_IDS }}' \
             -var='allowed_cidr_blocks=${{ secrets.ALLOWED_CIDR_BLOCKS }}' \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -out=tfplan
         continue-on-error: true
 

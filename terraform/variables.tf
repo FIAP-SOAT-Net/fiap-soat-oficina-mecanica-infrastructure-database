@@ -32,6 +32,13 @@ variable "db_username" {
   default     = "admin"
 }
 
+variable "db_password" {
+  description = "Master password for the database"
+  type        = string
+  sensitive   = true
+  default     = "ChangeMeInProduction123!" # Change this in terraform.tfvars
+}
+
 variable "db_port" {
   description = "Port on which the DB accepts connections"
   type        = number

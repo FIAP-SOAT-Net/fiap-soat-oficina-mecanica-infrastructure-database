@@ -38,12 +38,6 @@ output "security_group_id" {
   value       = aws_security_group.rds.id
 }
 
-# Secrets Manager
-output "db_password_secret_arn" {
-  description = "ARN of the database password in Secrets Manager"
-  value       = aws_db_instance.main.master_user_secret[0].secret_arn
-}
-
 # Resource identifiers
 output "rds_instance_id" {
   description = "RDS instance identifier"

@@ -11,6 +11,7 @@ project_name = "smart-workshop"
 # Database Configuration
 db_name     = "smart_workshop"
 db_username = "admin"
+db_password = "YourSecurePassword123!"  # ⚠️ CHANGE THIS!
 
 # RDS Instance (cost-optimized for dev)
 db_instance_class       = "db.t4g.micro"

@@ -150,7 +150,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}/migrations/sql:/flyway/sql \
             flyway/flyway:10-alpine \
-            -url=jdbc:mysql://${{ steps.rds.outputs.endpoint }}:3306/smart_workshop \
+            -url=jdbc:mysql://${{ steps.rds.outputs.endpoint }}:3306/smart_workshop?allowPublicKeyRetrieval=true&useSSL=false \
             -user=admin \
             -password="${{ secrets.DB_PASSWORD }}" \
             -connectRetries=60 \
@@ -162,7 +162,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}/migrations/sql:/flyway/sql \
             flyway/flyway:10-alpine \
-            -url=jdbc:mysql://${{ steps.rds.outputs.endpoint }}:3306/smart_workshop \
+            -url=jdbc:mysql://${{ steps.rds.outputs.endpoint }}:3306/smart_workshop?allowPublicKeyRetrieval=true&useSSL=false \
             -user=admin \
             -password="${{ secrets.DB_PASSWORD }}" \
             info

@@ -9,7 +9,14 @@
 *.user
 *.userosscache
 *.sln.docstates
+
+# Environment and Secrets
 *.env
+.env
+.env.local
+*.pem
+*.key
+secrets/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -409,6 +416,31 @@ FodyWeavers.xsd
 
 # Built Visual Studio Code Extensions
 *.vsix
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Flyway
+flyway.conf
+!flyway.conf.example
+
+# Docker
+docker-compose.override.yml
+mysql-data/
+
+# Database dumps
+*.sql.backup
+*.dump
 
 # Windows Installer files from build outputs
 *.cab

@@ -1,0 +1,58 @@
+# Example configuration file
+# Copy this to terraform.tfvars and fill in your values
+
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Environment
+environment  = "dev"
+project_name = "smart-workshop"
+
+# Database Configuration
+db_name     = "smart_workshop"
+db_username = "admin"
+
+# RDS Instance (cost-optimized for dev)
+db_instance_class       = "db.t4g.micro"
+db_allocated_storage    = 20
+db_max_allocated_storage = 50
+
+# Network Configuration
+# IMPORTANT: You must provide these values
+vpc_id     = "vpc-xxxxxxxxxxxxxxxxx"  # Your VPC ID
+subnet_ids = [
+  "subnet-xxxxxxxxxxxxxxxxx",  # Subnet 1
+  "subnet-xxxxxxxxxxxxxxxxx",  # Subnet 2
+]
+
+# Security Configuration
+# Add your public IP here: https://whatismyipaddress.com/
+allowed_cidr_blocks = [
+  "YOUR_IP_ADDRESS/32",  # Replace with your IP
+]
+
+# Add EKS security group ID here (when available)
+allowed_security_group_ids = [
+  # "sg-xxxxxxxxxxxxxxxxx",  # EKS security group
+]
+
+# Backup Configuration
+backup_retention_period = 7
+backup_window           = "03:00-04:00"  # 3 AM UTC
+maintenance_window      = "mon:04:00-mon:05:00"
+
+# Cost Optimization for Dev
+multi_az                     = false
+publicly_accessible          = true
+performance_insights_enabled = false
+deletion_protection          = false
+skip_final_snapshot          = true
+
+# Monitoring
+enabled_cloudwatch_logs_exports = ["error", "general", "slowquery"]
+
+# Additional Tags
+additional_tags = {
+  Team  = "DevOps"
+  Owner = "YourName"
+}

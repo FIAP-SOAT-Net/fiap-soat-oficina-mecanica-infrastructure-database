@@ -1,0 +1,3 @@
+# Migration scripts go here
+# Naming convention: V{version}__{description}.sql
+# Example: V1__create_initial_schema.sql

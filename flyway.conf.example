@@ -1,0 +1,9 @@
+flyway.url=jdbc:mysql://localhost:3306/smart_workshop
+flyway.user=workshop_user
+flyway.password=workshop_password_change_me
+flyway.locations=filesystem:./migrations/sql
+flyway.baselineOnMigrate=true
+flyway.validateOnMigrate=true
+flyway.cleanDisabled=true
+flyway.encoding=UTF-8
+flyway.connectRetries=60

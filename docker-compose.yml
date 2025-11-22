@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: smart-workshop-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-smart_workshop}
+      MYSQL_USER: ${MYSQL_USER:-workshop_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-workshop_password}
+      TZ: America/Sao_Paulo
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations/sql:/docker-entrypoint-initdb.d:ro
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --max_connections=200
+      --max_allowed_packet=64M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - workshop_network
+
+  # Flyway para migrations (opcional, pode rodar via CLI também)
+  flyway:
+    image: flyway/flyway:10-alpine
+    container_name: smart-workshop-flyway
+    command: migrate
+    environment:
+      FLYWAY_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-smart_workshop}
+      FLYWAY_USER: ${MYSQL_USER:-workshop_user}
+      FLYWAY_PASSWORD: ${MYSQL_PASSWORD:-workshop_password}
+      FLYWAY_CONNECT_RETRIES: 60
+      FLYWAY_BASELINE_ON_MIGRATE: true
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    volumes:
+      - ./migrations/sql:/flyway/sql:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - workshop_network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  workshop_network:
+    driver: bridge

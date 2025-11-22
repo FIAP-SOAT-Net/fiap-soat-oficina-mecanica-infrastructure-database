@@ -98,7 +98,7 @@ variable "allowed_security_group_ids" {
 variable "backup_retention_period" {
   description = "Number of days to retain backups"
   type        = number
-  default     = 7 # Minimum recommended
+  default     = 1 # Minimum recommended
 }
 
 variable "backup_window" {

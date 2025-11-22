@@ -139,8 +139,6 @@ resource "aws_db_instance" "main" {
 
   # Use AWS Secrets Manager for password management
   manage_master_user_password = true
-  # Use default AWS-managed key for encryption
-  kms_key_id = null
 
   # Storage configuration
   allocated_storage     = var.db_allocated_storage

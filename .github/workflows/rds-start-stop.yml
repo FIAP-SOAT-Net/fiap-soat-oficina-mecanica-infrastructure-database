@@ -13,15 +13,15 @@ on:
         default: 'stop'
       
       enable_schedule:
-        description: 'Habilitar schedule automático? (start 8h / stop 19h UTC)'
+        description: 'Habilitar schedule automático? (start 07h / stop 20h Brasília)'
         required: false
         type: boolean
         default: false
   
-  # Schedule opcional: Para às 19h UTC (16h BRT), Liga às 8h UTC (5h BRT)
+  # Schedule: Liga às 07h BRT (10h UTC), Para às 20h BRT (23h UTC)
   schedule:
-    - cron: '0 19 * * 1-5'  # Para às 19h UTC (seg-sex)
-    - cron: '0 8 * * 1-5'   # Liga às 8h UTC (seg-sex)
+    - cron: '0 10 * * 1-5'  # Liga às 10h UTC = 07h BRT (seg-sex)
+    - cron: '0 23 * * 1-5'  # Para às 23h UTC = 20h BRT (seg-sex)
 
 permissions:
   id-token: write   # OIDC
@@ -47,13 +47,13 @@ jobs:
         id: determine_action
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            # Schedule: 8h = start, 19h = stop
-            if [ "${{ github.event.schedule }}" = "0 8 * * 1-5" ]; then
+            # Schedule: 10h UTC (07h BRT) = start, 23h UTC (20h BRT) = stop
+            if [ "${{ github.event.schedule }}" = "0 10 * * 1-5" ]; then
               ACTION="start"
-              echo "📅 Schedule trigger: Iniciar RDS (8h UTC)"
+              echo "📅 Schedule trigger: Iniciar RDS (10h UTC = 07h Brasília)"
             else
               ACTION="stop"
-              echo "📅 Schedule trigger: Parar RDS (19h UTC)"
+              echo "📅 Schedule trigger: Parar RDS (23h UTC = 20h Brasília)"
             fi
           else
             # Manual
@@ -114,7 +114,10 @@ jobs:
             --db-instance-identifier "$INSTANCE_ID"
           
           echo "⏱️ Tempo estimado: 2-3 minutos"
-          echo "💰 Economia estimada: ~$0.50/hora = $12/dia = $360/mês"
+          echo "💰 Economia estimada (com schedule 07h-20h seg-sex):"
+          echo "   • Horas paradas/dia: 11h (20h-07h) = ~$5.50/dia"
+          echo "   • Economia semanal: ~$27.50 (seg-sex) + $24 (fim de semana) = ~$51.50"
+          echo "   • Economia mensal: ~$206/mês (~57% do custo total)"
           echo "⚠️ Limitação AWS: RDS será religado automaticamente após 7 dias parado"
           
           # Aguardar até status = stopping
@@ -196,10 +199,11 @@ jobs:
           else
             if [ "$ACTION" = "stop" ]; then
               echo "✅ Comando de parada enviado com sucesso"
-              echo "💰 Economia estimada:"
-              echo "   • Por hora:  ~$0.50"
-              echo "   • Por dia:   ~$12.00"
-              echo "   • Por mês:   ~$360.00 (se parado fora do horário comercial)"
+              echo "💰 Economia estimada (schedule 07h-20h Brasília):"
+              echo "   • Por hora parado:     ~$0.50"
+              echo "   • Por dia (11h parado): ~$5.50"
+              echo "   • Por semana:          ~$51.50"
+              echo "   • Por mês:             ~$206.00 (~57% do custo)"
               echo ""
               echo "⚠️  ATENÇÃO: AWS reinicia RDS automaticamente após 7 dias parado"
             else

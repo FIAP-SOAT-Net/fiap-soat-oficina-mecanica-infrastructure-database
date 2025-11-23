@@ -1,0 +1,62 @@
+# Git
+.git
+.gitignore
+.gitattributes
+*.md
+README*.md
+LICENSE
+
+# GitHub
+.github
+
+# Terraform
+terraform
+*.tf
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform
+.terraform.lock.hcl
+
+# Docker
+Dockerfile.*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+azure-pipelines.yml
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Backup files
+*.bak
+*.backup
+
+# Documentation (exceto se necessário)
+docs/
+
+# Scripts (se não forem necessários na imagem)
+scripts/
+
+# Não incluir na imagem (manter apenas migrations/sql)
+!migrations/sql/

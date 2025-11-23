@@ -1,0 +1,28 @@
+# Configurações customizadas do MySQL para desenvolvimento
+# Otimizado para uso local e CI (não para produção)
+
+[mysqld]
+# Character set e collation
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Timezone
+default-time-zone = '-03:00'
+
+# Logs
+log_error = /var/log/mysql/error.log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow-query.log
+long_query_time = 2
+
+# Performance (ajustado para desenvolvimento)
+max_connections = 150
+innodb_buffer_pool_size = 256M
+innodb_log_file_size = 64M
+
+# Segurança relaxada para desenvolvimento
+# ⚠️ NÃO usar em produção!
+local_infile = 1
+
+# Permitir funções e procedures
+log_bin_trust_function_creators = 1

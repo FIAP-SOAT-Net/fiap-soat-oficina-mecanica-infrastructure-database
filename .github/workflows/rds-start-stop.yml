@@ -1,0 +1,242 @@
+name: 🔄 RDS Start/Stop
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação a executar'
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+        default: 'stop'
+      
+      enable_schedule:
+        description: 'Habilitar schedule automático? (start 8h / stop 19h UTC)'
+        required: false
+        type: boolean
+        default: false
+  
+  # Schedule opcional: Para às 19h UTC (16h BRT), Liga às 8h UTC (5h BRT)
+  schedule:
+    - cron: '0 19 * * 1-5'  # Para às 19h UTC (seg-sex)
+    - cron: '0 8 * * 1-5'   # Liga às 8h UTC (seg-sex)
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+jobs:
+  manage-rds:
+    name: 🔄 ${{ github.event.inputs.action == 'start' && 'Iniciar' || github.event_name == 'schedule' && (github.event.schedule == '0 8 * * 1-5' && 'Iniciar' || 'Parar') || 'Parar' }} RDS
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+
+      - name: Determinar ação (manual ou schedule)
+        id: determine_action
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # Schedule: 8h = start, 19h = stop
+            if [ "${{ github.event.schedule }}" = "0 8 * * 1-5" ]; then
+              ACTION="start"
+              echo "📅 Schedule trigger: Iniciar RDS (8h UTC)"
+            else
+              ACTION="stop"
+              echo "📅 Schedule trigger: Parar RDS (19h UTC)"
+            fi
+          else
+            # Manual
+            ACTION="${{ github.event.inputs.action }}"
+            echo "🖱️ Manual trigger: $ACTION"
+          fi
+          
+          echo "action=$ACTION" >> $GITHUB_OUTPUT
+
+      - name: Verificar estado atual do RDS
+        id: check_status
+        run: |
+          INSTANCE_ID="smart-workshop-dev-db"
+          
+          echo "🔍 Verificando estado do RDS: $INSTANCE_ID"
+          
+          # Obter status atual
+          STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier "$INSTANCE_ID" \
+            --query 'DBInstances[0].DBInstanceStatus' \
+            --output text)
+          
+          echo "📊 Status atual: $STATUS"
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          
+          # Verificar se já está no estado desejado
+          ACTION="${{ steps.determine_action.outputs.action }}"
+          
+          if [ "$ACTION" = "stop" ] && [ "$STATUS" = "stopped" ]; then
+            echo "already_correct=true" >> $GITHUB_OUTPUT
+            echo "✅ RDS já está parado. Nenhuma ação necessária."
+            exit 0
+          elif [ "$ACTION" = "stop" ] && [ "$STATUS" = "stopping" ]; then
+            echo "already_correct=true" >> $GITHUB_OUTPUT
+            echo "⏳ RDS já está sendo parado. Aguardando conclusão..."
+            exit 0
+          elif [ "$ACTION" = "start" ] && [ "$STATUS" = "available" ]; then
+            echo "already_correct=true" >> $GITHUB_OUTPUT
+            echo "✅ RDS já está disponível. Nenhuma ação necessária."
+            exit 0
+          elif [ "$ACTION" = "start" ] && [ "$STATUS" = "starting" ]; then
+            echo "already_correct=true" >> $GITHUB_OUTPUT
+            echo "⏳ RDS já está sendo iniciado. Aguardando conclusão..."
+            exit 0
+          fi
+          
+          echo "already_correct=false" >> $GITHUB_OUTPUT
+
+      - name: Parar RDS
+        if: steps.determine_action.outputs.action == 'stop' && steps.check_status.outputs.already_correct == 'false'
+        id: stop_rds
+        run: |
+          INSTANCE_ID="smart-workshop-dev-db"
+          
+          echo "🛑 Parando RDS: $INSTANCE_ID"
+          
+          aws rds stop-db-instance \
+            --db-instance-identifier "$INSTANCE_ID"
+          
+          echo "⏱️ Tempo estimado: 2-3 minutos"
+          echo "💰 Economia estimada: ~$0.50/hora = $12/dia = $360/mês"
+          echo "⚠️ Limitação AWS: RDS será religado automaticamente após 7 dias parado"
+          
+          # Aguardar até status = stopping
+          echo ""
+          echo "⏳ Aguardando RDS começar a parar..."
+          for i in {1..30}; do
+            sleep 5
+            STATUS=$(aws rds describe-db-instances \
+              --db-instance-identifier "$INSTANCE_ID" \
+              --query 'DBInstances[0].DBInstanceStatus' \
+              --output text)
+            
+            echo "Tentativa $i/30: Status = $STATUS"
+            
+            if [ "$STATUS" = "stopping" ] || [ "$STATUS" = "stopped" ]; then
+              echo "✅ RDS está parando/parado!"
+              break
+            fi
+          done
+
+      - name: Iniciar RDS
+        if: steps.determine_action.outputs.action == 'start' && steps.check_status.outputs.already_correct == 'false'
+        id: start_rds
+        run: |
+          INSTANCE_ID="smart-workshop-dev-db"
+          
+          echo "🚀 Iniciando RDS: $INSTANCE_ID"
+          
+          aws rds start-db-instance \
+            --db-instance-identifier "$INSTANCE_ID"
+          
+          echo "⏱️ Tempo estimado: 5-10 minutos"
+          
+          # Aguardar até status = starting
+          echo ""
+          echo "⏳ Aguardando RDS começar a iniciar..."
+          for i in {1..30}; do
+            sleep 5
+            STATUS=$(aws rds describe-db-instances \
+              --db-instance-identifier "$INSTANCE_ID" \
+              --query 'DBInstances[0].DBInstanceStatus' \
+              --output text)
+            
+            echo "Tentativa $i/30: Status = $STATUS"
+            
+            if [ "$STATUS" = "starting" ] || [ "$STATUS" = "available" ]; then
+              echo "✅ RDS está iniciando/disponível!"
+              break
+            fi
+          done
+
+      - name: Resumo Final
+        if: always()
+        run: |
+          INSTANCE_ID="smart-workshop-dev-db"
+          ACTION="${{ steps.determine_action.outputs.action }}"
+          ALREADY_CORRECT="${{ steps.check_status.outputs.already_correct }}"
+          INITIAL_STATUS="${{ steps.check_status.outputs.status }}"
+          
+          # Status atual
+          CURRENT_STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier "$INSTANCE_ID" \
+            --query 'DBInstances[0].DBInstanceStatus' \
+            --output text 2>/dev/null || echo "unknown")
+          
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║              RESUMO - RDS START/STOP                       ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "🆔 Instância:       $INSTANCE_ID"
+          echo "🎬 Ação solicitada: $ACTION"
+          echo "📊 Status inicial:  $INITIAL_STATUS"
+          echo "📊 Status final:    $CURRENT_STATUS"
+          echo ""
+          
+          if [ "$ALREADY_CORRECT" = "true" ]; then
+            echo "ℹ️  Nenhuma ação foi necessária (RDS já estava no estado correto)"
+          else
+            if [ "$ACTION" = "stop" ]; then
+              echo "✅ Comando de parada enviado com sucesso"
+              echo "💰 Economia estimada:"
+              echo "   • Por hora:  ~$0.50"
+              echo "   • Por dia:   ~$12.00"
+              echo "   • Por mês:   ~$360.00 (se parado fora do horário comercial)"
+              echo ""
+              echo "⚠️  ATENÇÃO: AWS reinicia RDS automaticamente após 7 dias parado"
+            else
+              echo "✅ Comando de inicialização enviado com sucesso"
+              echo "⏱️  RDS estará disponível em aproximadamente 5-10 minutos"
+              echo ""
+              echo "📝 Para conectar:"
+              echo "   Host: smart-workshop-dev-db.c768oyw0y804.us-west-2.rds.amazonaws.com"
+              echo "   Port: 3306"
+              echo "   DB:   smart_workshop"
+            fi
+          fi
+          echo ""
+          echo "🔗 Endpoint: $(aws rds describe-db-instances \
+            --db-instance-identifier "$INSTANCE_ID" \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text 2>/dev/null || echo 'Aguardando inicialização...')"
+          echo ""
+
+      - name: Verificar configuração de schedule
+        if: github.event.inputs.enable_schedule == 'true' && github.event_name == 'workflow_dispatch'
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║           SCHEDULE AUTOMÁTICO CONFIGURADO                  ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "⏰ Schedule configurado neste workflow:"
+          echo ""
+          echo "   🌅 Ligar RDS:  Segunda a Sexta às 08:00 UTC (05:00 BRT)"
+          echo "   🌙 Parar RDS:  Segunda a Sexta às 19:00 UTC (16:00 BRT)"
+          echo ""
+          echo "📊 Economia estimada com schedule:"
+          echo "   • 11 horas parado por dia útil (19h-8h)"
+          echo "   • 48 horas parado por fim de semana"
+          echo "   • Total: ~103 horas/semana economizadas"
+          echo "   • Economia: ~$215/mês vs 24/7"
+          echo ""
+          echo "ℹ️  O schedule está ATIVO e rodará automaticamente"
+          echo "ℹ️  Para desabilitar, edite .github/workflows/rds-start-stop.yml"

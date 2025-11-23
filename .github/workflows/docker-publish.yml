@@ -1,0 +1,355 @@
+name: 🐳 Publish Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Tipo de incremento da versão (Semantic Versioning)'
+        required: true
+        type: choice
+        options:
+          - PATCH  # 1.0.0 → 1.0.1 (bugfix, pequenas mudanças)
+          - MINOR  # 1.0.0 → 1.1.0 (nova feature, compatível)
+          - MAJOR  # 1.0.0 → 2.0.0 (breaking change)
+        default: 'PATCH'
+
+permissions:
+  contents: write  # Necessário para criar tags
+  packages: write  # Caso use GHCR no futuro
+
+jobs:
+  build-and-push:
+    name: 🐳 Build & Push Docker Image
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Necessário para obter todas as tags
+
+      - name: Validar estrutura do projeto
+        run: |
+          echo "📂 Verificando estrutura do projeto..."
+          
+          if [ ! -f "Dockerfile" ]; then
+            echo "❌ Dockerfile não encontrado!"
+            exit 1
+          fi
+          
+          if [ ! -d "migrations/sql" ]; then
+            echo "❌ Diretório migrations/sql não encontrado!"
+            exit 1
+          fi
+          
+          MIGRATION_COUNT=$(ls -1 migrations/sql/*.sql 2>/dev/null | wc -l)
+          if [ "$MIGRATION_COUNT" -eq 0 ]; then
+            echo "❌ Nenhuma migration encontrada em migrations/sql/"
+            exit 1
+          fi
+          
+          echo "✅ Estrutura validada:"
+          echo "   - Dockerfile: ✓"
+          echo "   - Migrations: $MIGRATION_COUNT arquivo(s)"
+
+      - name: Obter última tag e calcular nova versão
+        id: version
+        run: |
+          echo "🏷️  Obtendo última tag do repositório..."
+          
+          # Obter todas as tags no formato vX.Y.Z
+          LAST_TAG=$(git tag -l "v*.*.*" | sort -V | tail -n 1)
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "ℹ️  Nenhuma tag encontrada. Iniciando com v1.0.0"
+            LAST_TAG="v0.0.0"
+          fi
+          
+          echo "📌 Última tag: $LAST_TAG"
+          
+          # Extrair números da versão (remover 'v' prefix)
+          VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          
+          # Incrementar conforme o tipo escolhido
+          BUMP_TYPE="${{ github.event.inputs.version_bump }}"
+          
+          case "$BUMP_TYPE" in
+            MAJOR)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            MINOR)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            PATCH)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          NEW_TAG="v$NEW_VERSION"
+          
+          echo "🆕 Nova versão: $NEW_TAG (bump: $BUMP_TYPE)"
+          
+          # Exportar para próximos steps
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Verificar se há mudanças desde última tag
+        id: check_changes
+        run: |
+          LAST_TAG="${{ steps.version.outputs.last_tag }}"
+          
+          echo "🔍 Verificando mudanças desde $LAST_TAG..."
+          
+          # Se é a primeira tag, sempre permitir
+          if [ "$LAST_TAG" = "v0.0.0" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "✅ Primeira tag - prosseguindo com build"
+            exit 0
+          fi
+          
+          # Verificar se houve commits desde a última tag
+          COMMITS_SINCE_TAG=$(git rev-list ${LAST_TAG}..HEAD --count)
+          
+          echo "📊 Commits desde $LAST_TAG: $COMMITS_SINCE_TAG"
+          
+          if [ "$COMMITS_SINCE_TAG" -eq 0 ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "⚠️  Nenhum commit novo desde a última tag!"
+            echo "❌ Build cancelado - não há mudanças para versionar"
+            exit 1
+          fi
+          
+          # Verificar se houve mudanças relevantes (migrations, Dockerfile, etc)
+          RELEVANT_CHANGES=$(git diff --name-only ${LAST_TAG}..HEAD | \
+            grep -E '(migrations/|Dockerfile|docker/)' | wc -l)
+          
+          echo "📝 Arquivos relevantes alterados: $RELEVANT_CHANGES"
+          
+          if [ "$RELEVANT_CHANGES" -eq 0 ]; then
+            echo "⚠️  Nenhuma mudança relevante detectada em:"
+            echo "   - migrations/"
+            echo "   - Dockerfile"
+            echo "   - docker/"
+            echo ""
+            echo "ℹ️  Continuando mesmo assim (há outros commits)..."
+          fi
+          
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "✅ Mudanças detectadas - prosseguindo com build"
+
+      - name: Verificar se tag já existe
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new_tag }}"
+          
+          echo "🔍 Verificando se tag $NEW_TAG já existe..."
+          
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "❌ Tag $NEW_TAG já existe no repositório!"
+            echo "ℹ️  Use um version_bump maior ou delete a tag existente"
+            exit 1
+          fi
+          
+          echo "✅ Tag $NEW_TAG disponível"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extrair metadata do Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: igortessaro/smart-mechanical-workshop-db
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.new_version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.new_version }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.new_version }}
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            VERSION=${{ steps.version.outputs.new_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Testar imagem Docker
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          IMAGE="igortessaro/smart-mechanical-workshop-db:$NEW_VERSION"
+          
+          echo "🧪 Testando imagem: $IMAGE"
+          
+          # Iniciar container
+          echo "🚀 Iniciando container de teste..."
+          docker run -d \
+            --name test-mysql \
+            -e MYSQL_ROOT_PASSWORD=test_root_password \
+            -e MYSQL_DATABASE=smart_workshop \
+            -e MYSQL_USER=test_user \
+            -e MYSQL_PASSWORD=test_password \
+            -p 3307:3306 \
+            "$IMAGE"
+          
+          # Aguardar MySQL ficar pronto
+          echo "⏳ Aguardando MySQL inicializar..."
+          for i in {1..30}; do
+            if docker exec test-mysql mysqladmin ping -h localhost -uroot -ptest_root_password --silent; then
+              echo "✅ MySQL está pronto!"
+              break
+            fi
+            echo "Tentativa $i/30..."
+            sleep 2
+          done
+          
+          # Verificar se migrations foram aplicadas
+          echo ""
+          echo "🔍 Verificando migrations aplicadas..."
+          docker exec test-mysql mysql -uroot -ptest_root_password smart_workshop \
+            -e "SHOW TABLES;" || {
+              echo "❌ Erro ao consultar tabelas!"
+              docker logs test-mysql
+              exit 1
+            }
+          
+          # Verificar versão do MySQL
+          echo ""
+          echo "📊 Versão do MySQL:"
+          docker exec test-mysql mysql -uroot -ptest_root_password \
+            -e "SELECT VERSION();"
+          
+          # Cleanup
+          echo ""
+          echo "🧹 Limpando container de teste..."
+          docker stop test-mysql
+          docker rm test-mysql
+          
+          echo "✅ Imagem testada com sucesso!"
+
+      - name: Criar Git Tag
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new_tag }}"
+          
+          echo "🏷️  Criando tag $NEW_TAG..."
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG
+
+          📦 Docker Image: igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version }}
+          🔄 Version Bump: ${{ github.event.inputs.version_bump }}
+          📝 Commit: ${{ github.sha }}
+          👤 Triggered by: ${{ github.actor }}
+          "
+          
+          git push origin "$NEW_TAG"
+          
+          echo "✅ Tag $NEW_TAG criada e pushed!"
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.new_tag }}
+          name: Release ${{ steps.version.outputs.new_tag }}
+          body: |
+            ## 🐳 Docker Image Release
+            
+            **Versão:** `${{ steps.version.outputs.new_version }}`  
+            **Tipo:** `${{ github.event.inputs.version_bump }}`  
+            **Commit:** `${{ github.sha }}`
+            
+            ### 📦 Imagens Disponíveis
+            
+            ```bash
+            # Versão específica
+            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version }}
+            
+            # Latest
+            docker pull igortessaro/smart-mechanical-workshop-db:latest
+            
+            # Major version
+            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version | split('.')[0] }}
+            
+            # Major.Minor version
+            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version | split('.')[0] }}.${{ steps.version.outputs.new_version | split('.')[1] }}
+            ```
+            
+            ### 🚀 Como usar
+            
+            ```bash
+            # Executar container
+            docker run -d \
+              --name smart-workshop-db \
+              -e MYSQL_ROOT_PASSWORD=your_root_password \
+              -e MYSQL_DATABASE=smart_workshop \
+              -e MYSQL_USER=workshop_user \
+              -e MYSQL_PASSWORD=your_password \
+              -p 3306:3306 \
+              igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version }}
+            
+            # Conectar
+            mysql -h 127.0.0.1 -P 3306 -u workshop_user -p smart_workshop
+            ```
+            
+            ### 📋 Migrations Incluídas
+            
+            Todas as migrations em `migrations/sql/` foram aplicadas automaticamente.
+            
+            ### 🔗 Links
+            
+            - [Docker Hub](https://hub.docker.com/r/igortessaro/smart-mechanical-workshop-db)
+            - [Documentação](https://github.com/${{ github.repository }}/blob/main/README.md)
+            - [Changelog](https://github.com/${{ github.repository }}/compare/${{ steps.version.outputs.last_tag }}...${{ steps.version.outputs.new_tag }})
+          draft: false
+          prerelease: false
+
+      - name: Resumo Final
+        if: always()
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          NEW_TAG="${{ steps.version.outputs.new_tag }}"
+          BUMP_TYPE="${{ github.event.inputs.version_bump }}"
+          
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║           DOCKER IMAGE PUBLICADA COM SUCESSO                 ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "🏷️  Tag Git:        $NEW_TAG"
+          echo "📦 Versão Docker:  $NEW_VERSION"
+          echo "🔄 Tipo de Bump:   $BUMP_TYPE"
+          echo "📝 Commit SHA:     ${{ github.sha }}"
+          echo ""
+          echo "🐳 Imagens publicadas:"
+          echo "   • igortessaro/smart-mechanical-workshop-db:$NEW_VERSION"
+          echo "   • igortessaro/smart-mechanical-workshop-db:latest"
+          echo ""
+          echo "🔗 Docker Hub:"
+          echo "   https://hub.docker.com/r/igortessaro/smart-mechanical-workshop-db"
+          echo ""
+          echo "📦 Pull command:"
+          echo "   docker pull igortessaro/smart-mechanical-workshop-db:$NEW_VERSION"
+          echo ""

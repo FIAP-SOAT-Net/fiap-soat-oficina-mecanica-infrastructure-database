@@ -98,6 +98,8 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
 
       - name: Verificar se há mudanças desde última tag
         id: check_changes
@@ -291,10 +293,10 @@ jobs:
             docker pull igortessaro/smart-mechanical-workshop-db:latest
             
             # Major version
-            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version | split('.')[0] }}
+            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.major }}
             
             # Major.Minor version
-            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.new_version | split('.')[0] }}.${{ steps.version.outputs.new_version | split('.')[1] }}
+            docker pull igortessaro/smart-mechanical-workshop-db:${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}
             ```
             
             ### 🚀 Como usar

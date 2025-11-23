@@ -174,9 +174,7 @@ jobs:
         with:
           images: igortessaro/smart-mechanical-workshop-db
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.version.outputs.new_version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.new_version }}
-            type=semver,pattern={{major}},value=${{ steps.version.outputs.new_version }}
+            type=raw,value=${{ steps.version.outputs.new_version }}
             type=raw,value=latest
             type=sha,prefix=sha-,format=short
 
@@ -218,7 +216,7 @@ jobs:
           # Aguardar MySQL ficar pronto
           echo "⏳ Aguardando MySQL inicializar..."
           for i in {1..30}; do
-            if docker exec test-mysql mysqladmin ping -h localhost -uroot -ptest_root_password --silent; then
+            if docker exec test-mysql mysqladmin ping -h localhost -uroot -ptest_root_password --silent 2>/dev/null; then
               echo "✅ MySQL está pronto!"
               break
             fi
@@ -226,11 +224,15 @@ jobs:
             sleep 2
           done
           
+          # Aguardar mais um pouco para garantir que o MySQL está completamente inicializado
+          echo "⏳ Aguardando finalização da inicialização..."
+          sleep 5
+          
           # Verificar se migrations foram aplicadas
           echo ""
           echo "🔍 Verificando migrations aplicadas..."
-          docker exec test-mysql mysql -uroot -ptest_root_password smart_workshop \
-            -e "SHOW TABLES;" || {
+          docker exec test-mysql mysql -h 127.0.0.1 -uroot -ptest_root_password smart_workshop \
+            -e "SHOW TABLES;" 2>/dev/null || {
               echo "❌ Erro ao consultar tabelas!"
               docker logs test-mysql
               exit 1
@@ -239,8 +241,8 @@ jobs:
           # Verificar versão do MySQL
           echo ""
           echo "📊 Versão do MySQL:"
-          docker exec test-mysql mysql -uroot -ptest_root_password \
-            -e "SELECT VERSION();"
+          docker exec test-mysql mysql -h 127.0.0.1 -uroot -ptest_root_password \
+            -e "SELECT VERSION();" 2>/dev/null
           
           # Cleanup
           echo ""

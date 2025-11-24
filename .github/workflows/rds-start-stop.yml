@@ -13,15 +13,15 @@ on:
         default: 'stop'
       
       enable_schedule:
-        description: 'Habilitar schedule automático? (start 07h / stop 20h Brasília)'
+        description: 'Habilitar schedule automático? (start 08h / stop 18h Brasília)'
         required: false
         type: boolean
         default: false
   
-  # Schedule: Liga às 07h BRT (10h UTC), Para às 20h BRT (23h UTC)
+  # Schedule: Liga às 08h BRT (11h UTC), Para às 18h BRT (21h UTC)
   schedule:
-    - cron: '0 10 * * 1-5'  # Liga às 10h UTC = 07h BRT (seg-sex)
-    - cron: '0 23 * * 1-5'  # Para às 23h UTC = 20h BRT (seg-sex)
+    - cron: '0 11 * * 1-5'  # Liga às 11h UTC = 08h BRT (seg-sex)
+    - cron: '0 21 * * 1-5'  # Para às 21h UTC = 18h BRT (seg-sex)
 
 permissions:
   id-token: write   # OIDC
@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   manage-rds:
-    name: 🔄 ${{ github.event.inputs.action == 'start' && 'Iniciar' || github.event_name == 'schedule' && (github.event.schedule == '0 8 * * 1-5' && 'Iniciar' || 'Parar') || 'Parar' }} RDS
+    name: 🔄 ${{ github.event.inputs.action == 'start' && 'Iniciar' || github.event_name == 'schedule' && (github.event.schedule == '0 11 * * 1-5' && 'Iniciar' || 'Parar') || 'Parar' }} RDS
     runs-on: ubuntu-latest
     environment: dev
     
@@ -47,13 +47,13 @@ jobs:
         id: determine_action
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            # Schedule: 10h UTC (07h BRT) = start, 23h UTC (20h BRT) = stop
-            if [ "${{ github.event.schedule }}" = "0 10 * * 1-5" ]; then
+            # Schedule: 11h UTC (08h BRT) = start, 21h UTC (18h BRT) = stop
+            if [ "${{ github.event.schedule }}" = "0 11 * * 1-5" ]; then
               ACTION="start"
-              echo "📅 Schedule trigger: Iniciar RDS (10h UTC = 07h Brasília)"
+              echo "📅 Schedule trigger: Iniciar RDS (11h UTC = 08h Brasília)"
             else
               ACTION="stop"
-              echo "📅 Schedule trigger: Parar RDS (23h UTC = 20h Brasília)"
+              echo "📅 Schedule trigger: Parar RDS (21h UTC = 18h Brasília)"
             fi
           else
             # Manual
@@ -114,10 +114,10 @@ jobs:
             --db-instance-identifier "$INSTANCE_ID"
           
           echo "⏱️ Tempo estimado: 2-3 minutos"
-          echo "💰 Economia estimada (com schedule 07h-20h seg-sex):"
-          echo "   • Horas paradas/dia: 11h (20h-07h) = ~$5.50/dia"
-          echo "   • Economia semanal: ~$27.50 (seg-sex) + $24 (fim de semana) = ~$51.50"
-          echo "   • Economia mensal: ~$206/mês (~57% do custo total)"
+          echo "💰 Economia estimada (com schedule 08h-18h seg-sex):"
+          echo "   • Horas paradas/dia: 14h (18h-08h) = ~$7.00/dia"
+          echo "   • Economia semanal: ~$35.00 (seg-sex) + $24 (fim de semana) = ~$59.00"
+          echo "   • Economia mensal: ~$236/mês (~65% do custo total)"
           echo "⚠️ Limitação AWS: RDS será religado automaticamente após 7 dias parado"
           
           # Aguardar até status = stopping
@@ -199,11 +199,11 @@ jobs:
           else
             if [ "$ACTION" = "stop" ]; then
               echo "✅ Comando de parada enviado com sucesso"
-              echo "💰 Economia estimada (schedule 07h-20h Brasília):"
-              echo "   • Por hora parado:     ~$0.50"
-              echo "   • Por dia (11h parado): ~$5.50"
-              echo "   • Por semana:          ~$51.50"
-              echo "   • Por mês:             ~$206.00 (~57% do custo)"
+              echo "💰 Economia estimada (schedule 08h-18h Brasília):"
+              echo "   • Por hora parado:      ~$0.50"
+              echo "   • Por dia (14h parado): ~$7.00"
+              echo "   • Por semana:           ~$59.00"
+              echo "   • Por mês:              ~$236.00 (~65% do custo)"
               echo ""
               echo "⚠️  ATENÇÃO: AWS reinicia RDS automaticamente após 7 dias parado"
             else
@@ -233,14 +233,14 @@ jobs:
           echo ""
           echo "⏰ Schedule configurado neste workflow:"
           echo ""
-          echo "   🌅 Ligar RDS:  Segunda a Sexta às 08:00 UTC (05:00 BRT)"
-          echo "   🌙 Parar RDS:  Segunda a Sexta às 19:00 UTC (16:00 BRT)"
+          echo "   🌅 Ligar RDS:  Segunda a Sexta às 11:00 UTC (08:00 BRT)"
+          echo "   🌙 Parar RDS:  Segunda a Sexta às 21:00 UTC (18:00 BRT)"
           echo ""
           echo "📊 Economia estimada com schedule:"
-          echo "   • 11 horas parado por dia útil (19h-8h)"
+          echo "   • 14 horas parado por dia útil (18h-08h)"
           echo "   • 48 horas parado por fim de semana"
-          echo "   • Total: ~103 horas/semana economizadas"
-          echo "   • Economia: ~$215/mês vs 24/7"
+          echo "   • Total: ~118 horas/semana economizadas"
+          echo "   • Economia: ~$236/mês vs 24/7 (~65% de economia)"
           echo ""
           echo "ℹ️  O schedule está ATIVO e rodará automaticamente"
           echo "ℹ️  Para desabilitar, edite .github/workflows/rds-start-stop.yml"

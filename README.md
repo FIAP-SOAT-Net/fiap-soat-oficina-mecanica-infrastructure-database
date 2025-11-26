@@ -338,7 +338,36 @@ terraform apply
 
 **2.2. Criar IAM Role para GitHub Actions:**
 
-Crie uma role com a seguinte Trust Policy:
+**Passo a passo via Console AWS:**
+
+1. **Acesse IAM** → [https://console.aws.amazon.com/iam/](https://console.aws.amazon.com/iam/)
+
+2. **Criar Role:**
+   - No menu lateral, clique em **Roles**
+   - Clique no botão **Create role**
+
+3. **Selecionar Trusted Entity:**
+   - **Trusted entity type**: Selecione **Web identity**
+   - **Identity provider**: Escolha `token.actions.githubusercontent.com` (o provider que criou no passo 2.1)
+   - **Audience**: Selecione `sts.amazonaws.com`
+   - Clique em **Next**
+
+4. **Adicionar Permissions** (vamos fazer depois, pule por enquanto):
+   - Clique em **Next** sem selecionar nada
+
+5. **Nome e Revisão:**
+   - **Role name**: `GitHubActionsSmartWorkshopDB`
+   - **Description**: `Role para GitHub Actions fazer deploy da infraestrutura do banco de dados`
+   - Clique em **Create role**
+
+6. **Editar Trust Policy** (necessário para adicionar condição do repositório):
+   - Encontre a role recém-criada `GitHubActionsSmartWorkshopDB`
+   - Clique nela
+   - Vá na aba **Trust relationships**
+   - Clique em **Edit trust policy**
+   - **Substitua todo o JSON** pela Trust Policy abaixo:
+
+**Trust Policy completa (copie e cole):**
 
 ```json
 {
@@ -347,7 +376,7 @@ Crie uma role com a seguinte Trust Policy:
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::SUA_CONTA_ID:oidc-provider/token.actions.githubusercontent.com"
+        "Federated": "arn:aws:iam::344508262523:oidc-provider/token.actions.githubusercontent.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
@@ -363,14 +392,35 @@ Crie uma role com a seguinte Trust Policy:
 }
 ```
 
+**⚠️ IMPORTANTE:** Substitua `SUA_CONTA_ID` pelo seu AWS Account ID:
+```bash
+# Descobrir seu Account ID
+aws sts get-caller-identity --query Account --output text
+```
+
+7. **Salvar Trust Policy:**
+   - Clique em **Update policy**
+
 **2.3. Anexar Policies à Role:**
 
-Anexe as seguintes managed policies:
-- `AmazonRDSFullAccess`
-- `AmazonVPCFullAccess`
-- `IAMFullAccess`
+Agora vamos dar permissões à role para gerenciar a infraestrutura.
 
-E crie uma inline policy para acesso ao S3/DynamoDB:
+1. **Adicionar Managed Policies:**
+   - Ainda na role `GitHubActionsSmartWorkshopDB`
+   - Vá na aba **Permissions**
+   - Clique em **Add permissions** → **Attach policies**
+   - Busque e selecione as seguintes policies:
+     - ✅ `AmazonRDSFullAccess`
+     - ✅ `AmazonVPCFullAccess`
+     - ✅ `IAMFullAccess`
+   - Clique em **Add permissions**
+
+2. **Criar Inline Policy para S3/DynamoDB:**
+   - Ainda em **Permissions**, clique em **Add permissions** → **Create inline policy**
+   - Clique na aba **JSON**
+   - Cole a policy abaixo:
+
+**Inline Policy (copie e cole):**
 
 ```json
 {
@@ -405,6 +455,26 @@ E crie uma inline policy para acesso ao S3/DynamoDB:
   ]
 }
 ```
+
+**⚠️ IMPORTANTE:** Substitua `SUA_CONTA_ID` pelo seu AWS Account ID nos dois lugares (S3 e DynamoDB).
+
+3. **Salvar Inline Policy:**
+   - Clique em **Review policy**
+   - **Policy name**: `TerraformBackendAccess`
+   - Clique em **Create policy**
+
+4. **Copiar ARN da Role:**
+   - Na página da role, copie o **ARN** (está no topo)
+   - Exemplo: `arn:aws:iam::344508262523:role/GitHubActionsSmartWorkshopDB`
+   - **Guarde esse ARN**, você vai precisar dele para configurar o GitHub Secret
+
+**Resumo do que foi criado:**
+- ✅ IAM Role: `GitHubActionsSmartWorkshopDB`
+- ✅ Trust Policy: Permite GitHub Actions assumir a role via OIDC
+- ✅ Managed Policies: RDS, VPC e IAM (permissões amplas)
+- ✅ Inline Policy: Acesso ao S3 (state) e DynamoDB (locks)
+
+---
 
 #### Passo 3: Configurar Secrets no GitHub
 
